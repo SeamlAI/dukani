@@ -32,14 +32,12 @@ RUN apk add --no-cache \
     ttf-freefont \
     font-noto-emoji \
     wqy-zenhei \
-    # Additional dependencies for better Chromium stability
     dbus \
     dbus-x11 \
     xvfb \
-    # Font dependencies
     fontconfig \
-    # Process management
-    procps \
+    wget \
+    curl \
     && rm -rf /var/cache/apk/*
 
 # Create a non-root user for security
@@ -55,8 +53,11 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     # Chrome/Chromium environment variables for better stability
     CHROME_BIN=/usr/bin/chromium-browser \
     DISPLAY=:99 \
-    # Memory and process limits for container
-    NODE_OPTIONS="--max-old-space-size=1024"
+    # Reduced memory limits for Fly.io constraints
+    NODE_OPTIONS="--max-old-space-size=512" \
+    # Additional Chrome stability variables
+    CHROME_NO_SANDBOX=true \
+    CHROMIUM_FLAGS="--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
 
 # Copy package files
 COPY package*.json ./
@@ -77,9 +78,9 @@ USER whatsapp
 # Expose port
 EXPOSE 3000
 
-# Health check for Fly.io
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+# Health check for Fly.io - more robust and lenient
+HEALTHCHECK --interval=45s --timeout=15s --start-period=120s --retries=3 \
+    CMD curl --fail --silent --max-time 10 http://localhost:3000/api/health || exit 1
 
 # Start the application
 CMD ["npm", "run", "start:prod"] 

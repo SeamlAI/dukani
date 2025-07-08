@@ -36,7 +36,7 @@ export class BotService implements OnModuleInit {
       let defaultChromeArgs = '--no-sandbox,--disable-setuid-sandbox';
       
       if (isFlyIo) {
-        // Fly.io specific Chrome arguments - more aggressive resource optimization
+        // Fly.io specific Chrome arguments - extremely aggressive resource optimization
         defaultChromeArgs = [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -52,7 +52,7 @@ export class BotService implements OnModuleInit {
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI,VizDisplayCompositor,AudioServiceOutOfProcess',
+          '--disable-features=TranslateUI,VizDisplayCompositor,AudioServiceOutOfProcess,Vulkan,VizDisplayCompositor,BackgroundModeManager',
           '--disable-ipc-flooding-protection',
           '--disable-background-networking',
           '--disable-sync',
@@ -64,17 +64,33 @@ export class BotService implements OnModuleInit {
           '--disable-app-list-dismiss-on-blur',
           '--disable-accelerated-video-decode',
           '--memory-pressure-off',
-          '--max_old_space_size=256',
+          '--max_old_space_size=128',
           '--disable-hang-monitor',
           '--disable-prompt-on-repost',
           '--disable-domain-reliability',
           '--disable-component-extensions-with-background-pages',
           '--disable-client-side-phishing-detection',
           '--aggressive-cache-discard',
-          '--disable-back-forward-cache'
+          '--disable-back-forward-cache',
+          '--disable-shared-workers',
+          '--disable-service-workers',
+          '--disable-background-sync',
+          '--disable-permissions-api',
+          '--disable-presentation-api',
+          '--disable-remote-fonts',
+          '--disable-speech-api',
+          '--disable-file-system',
+          '--disable-threaded-scrolling',
+          '--disable-accelerated-video-encode',
+          '--disable-webgl',
+          '--disable-webgl2',
+          '--disable-3d-apis',
+          '--disable-logging',
+          '--disable-dev-tools',
+          '--disable-chrome-tracing'
         ].join(',');
         
-        this.logger.log('🪂 Using Fly.io optimized Chrome configuration');
+        this.logger.log('🪂 Using Fly.io extremely optimized Chrome configuration');
       } else if (isProduction || isRailway) {
         // Railway/other production specific Chrome args
         defaultChromeArgs = [
@@ -117,11 +133,16 @@ export class BotService implements OnModuleInit {
       const puppeteerConfig = {
         args: chromeArgs.split(',').map(arg => arg.trim()),
         headless: true,
-        timeout: isFlyIo ? 90000 : (isRailway ? 120000 : 60000), // Adjusted timeouts per platform
+        timeout: isFlyIo ? 150000 : (isRailway ? 120000 : 60000), // Increased timeout for Fly.io
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         ignoreDefaultArgs: ['--disable-extensions'], // Allow some defaults
         devtools: false,
         pipe: (isRailway || isFlyIo) ? true : false, // Use pipe instead of websocket for better stability
+        // Additional Fly.io specific configurations
+        ...(isFlyIo && {
+          ignoreHTTPSErrors: true,
+          slowMo: 100, // Add 100ms delay between actions to reduce resource pressure
+        }),
       };
 
       // Add memory limits for containerized environments
@@ -156,7 +177,7 @@ export class BotService implements OnModuleInit {
           this.logger.log(`WhatsApp initialization attempt ${attempt}/${maxRetries}`);
           
           const initPromise = this.whatsappClient.initialize();
-          const timeoutMs = isFlyIo ? 90000 : (isRailway ? 180000 : 120000); // Shorter timeout for Fly.io
+          const timeoutMs = isFlyIo ? 150000 : (isRailway ? 180000 : 120000); // Increased timeout for Fly.io
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error(`WhatsApp initialization timeout (${timeoutMs/1000}s)`)), timeoutMs);
           });
@@ -169,8 +190,17 @@ export class BotService implements OnModuleInit {
           lastError = error;
           this.logger.warn(`Initialization attempt ${attempt} failed:`, error.message);
           
+          // Check if this is a Chrome crash - these are particularly common on Fly.io
+          const isChromeError = error.message.includes('Target closed') || 
+                               error.message.includes('Protocol error') ||
+                               error.message.includes('Session closed');
+          
+          if (isChromeError && isFlyIo) {
+            this.logger.warn('Chrome crash detected on Fly.io - this is common due to resource constraints');
+          }
+          
           if (attempt < maxRetries) {
-            const retryDelay = isFlyIo ? 5000 : 10000; // Shorter retry delay for Fly.io
+            const retryDelay = isFlyIo ? 10000 : 10000; // Longer retry delay for Fly.io
             this.logger.log(`Retrying in ${retryDelay/1000} seconds...`);
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             
