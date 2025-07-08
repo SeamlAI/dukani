@@ -1,14 +1,27 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client, LocalAuth, Message } from 'whatsapp-web.js';
-import * as qrcode from 'qrcode-terminal';
+import makeWASocket, { 
+  DisconnectReason, 
+  useMultiFileAuthState, 
+  WAMessageStubType,
+  WAMessageUpdate,
+  proto,
+  isJidBroadcast,
+  isJidStatusBroadcast,
+  Browsers,
+  delay
+} from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import * as QRCode from 'qrcode';
+import P from 'pino';
 import { AgentService } from '../agent/agent.service';
 
 @Injectable()
 export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
-  private whatsappClient: Client;
+  private sock: any;
   private isReady = false;
+  private qrCodeData: string | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -16,292 +29,164 @@ export class BotService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // Initialize WhatsApp client asynchronously to not block application startup
-    this.initializeWhatsAppClient().catch(error => {
-      this.logger.error('WhatsApp client initialization failed, but app will continue running', error);
+    // Initialize Baileys WhatsApp client asynchronously to not block application startup
+    this.initializeBaileysClient().catch(error => {
+      this.logger.error('Baileys WhatsApp client initialization failed, but app will continue running', error);
     });
   }
 
-  private async initializeWhatsAppClient(): Promise<void> {
+  private async initializeBaileysClient(): Promise<void> {
     try {
-      this.logger.log('Initializing WhatsApp Web client...');
+      this.logger.log('🟢 Initializing Baileys WhatsApp client...');
 
       const sessionPath = this.configService.get<string>('WA_SESSION_PATH', './wa-session');
       
-      // Enhanced Chrome arguments for different deployment platforms
-      const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+      // Detect platform for logging
       const isFlyIo = !!(process.env.FLY_APP_NAME || process.env.FLY_ALLOC_ID);
-      const isProduction = process.env.NODE_ENV === 'production';
+      const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
       
-      let defaultChromeArgs = '--no-sandbox,--disable-setuid-sandbox';
-      
-      if (isFlyIo) {
-        // Fly.io specific Chrome arguments - extremely aggressive resource optimization
-        defaultChromeArgs = [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-default-apps',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI,VizDisplayCompositor,AudioServiceOutOfProcess,Vulkan,VizDisplayCompositor,BackgroundModeManager',
-          '--disable-ipc-flooding-protection',
-          '--disable-background-networking',
-          '--disable-sync',
-          '--disable-translate',
-          '--disable-web-security',
-          '--disable-accelerated-2d-canvas',
-          '--disable-accelerated-jpeg-decoding',
-          '--disable-accelerated-mjpeg-decode',
-          '--disable-app-list-dismiss-on-blur',
-          '--disable-accelerated-video-decode',
-          '--memory-pressure-off',
-          '--max_old_space_size=128',
-          '--disable-hang-monitor',
-          '--disable-prompt-on-repost',
-          '--disable-domain-reliability',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-client-side-phishing-detection',
-          '--aggressive-cache-discard',
-          '--disable-back-forward-cache',
-          '--disable-shared-workers',
-          '--disable-service-workers',
-          '--disable-background-sync',
-          '--disable-permissions-api',
-          '--disable-presentation-api',
-          '--disable-remote-fonts',
-          '--disable-speech-api',
-          '--disable-file-system',
-          '--disable-threaded-scrolling',
-          '--disable-accelerated-video-encode',
-          '--disable-webgl',
-          '--disable-webgl2',
-          '--disable-3d-apis',
-          '--disable-logging',
-          '--disable-dev-tools',
-          '--disable-chrome-tracing'
-        ].join(',');
-        
-        this.logger.log('🪂 Using Fly.io extremely optimized Chrome configuration');
-      } else if (isProduction || isRailway) {
-        // Railway/other production specific Chrome args
-        defaultChromeArgs = [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-default-apps',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-ipc-flooding-protection',
-          '--memory-pressure-off',
-          '--max_old_space_size=256',
-          '--disable-web-security',
-          '--disable-sync',
-          '--disable-translate',
-          '--hide-scrollbars',
-          '--mute-audio',
-          '--disable-background-networking',
-          '--disable-background-sync',
-          '--disable-client-side-phishing-detection',
-          '--disable-sync-preferences',
-          '--disable-sync-app-settings'
-        ].join(',');
-      }
-      
-      const chromeArgs = this.configService.get<string>('WA_CHROME_ARGS', defaultChromeArgs);
-      
-      this.logger.log(`Using Chrome args: ${chromeArgs}`);
+      if (isFlyIo) this.logger.log('🪂 Detected Fly.io deployment - using optimized Baileys configuration');
+      if (isRailway) this.logger.log('🚂 Detected Railway deployment');
 
-      const puppeteerConfig = {
-        args: chromeArgs.split(',').map(arg => arg.trim()),
-        headless: true,
-        timeout: isFlyIo ? 150000 : (isRailway ? 120000 : 60000), // Increased timeout for Fly.io
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        ignoreDefaultArgs: ['--disable-extensions'], // Allow some defaults
-        devtools: false,
-        pipe: (isRailway || isFlyIo) ? true : false, // Use pipe instead of websocket for better stability
-        // Additional Fly.io specific configurations
-        ...(isFlyIo && {
-          ignoreHTTPSErrors: true,
-          slowMo: 100, // Add 100ms delay between actions to reduce resource pressure
-        }),
-      };
+      // Set up authentication state
+      const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
-      // Add memory limits for containerized environments
-      if (isRailway || isFlyIo) {
-        puppeteerConfig.args.push('--memory-pressure-off');
-        if (isFlyIo) {
-          puppeteerConfig.args.push('--max_old_space_size=256');
-        } else {
-          puppeteerConfig.args.push('--max_old_space_size=512');
-        }
-      }
-
-      this.whatsappClient = new Client({
-        authStrategy: new LocalAuth({
-          dataPath: sessionPath,
-        }),
-        puppeteer: puppeteerConfig,
-        webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-        },
+      // Create logger for Baileys (suppress verbose logs in production)
+      const baileysLogger = P({ 
+        level: process.env.NODE_ENV === 'production' ? 'silent' : 'info'
       });
 
-      this.setupEventHandlers();
-      
-      // Initialize with retry logic for containerized environments
-      const maxRetries = (isRailway || isFlyIo) ? 3 : 1;
-      let lastError;
-      
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          this.logger.log(`WhatsApp initialization attempt ${attempt}/${maxRetries}`);
-          
-          const initPromise = this.whatsappClient.initialize();
-          const timeoutMs = isFlyIo ? 150000 : (isRailway ? 180000 : 120000); // Increased timeout for Fly.io
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error(`WhatsApp initialization timeout (${timeoutMs/1000}s)`)), timeoutMs);
-          });
-          
-          await Promise.race([initPromise, timeoutPromise]);
-          this.logger.log('✅ WhatsApp client initialization completed successfully');
-          return; // Success, exit retry loop
-          
-        } catch (error) {
-          lastError = error;
-          this.logger.warn(`Initialization attempt ${attempt} failed:`, error.message);
-          
-          // Check if this is a Chrome crash - these are particularly common on Fly.io
-          const isChromeError = error.message.includes('Target closed') || 
-                               error.message.includes('Protocol error') ||
-                               error.message.includes('Session closed');
-          
-          if (isChromeError && isFlyIo) {
-            this.logger.warn('Chrome crash detected on Fly.io - this is common due to resource constraints');
-          }
-          
-          if (attempt < maxRetries) {
-            const retryDelay = isFlyIo ? 10000 : 10000; // Longer retry delay for Fly.io
-            this.logger.log(`Retrying in ${retryDelay/1000} seconds...`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-            
-            // Destroy previous client attempt
-            try {
-              if (this.whatsappClient) {
-                await this.whatsappClient.destroy();
-              }
-            } catch (destroyError) {
-              this.logger.warn('Error destroying client during retry:', destroyError.message);
-            }
-            
-            // Recreate client for retry
-            this.whatsappClient = new Client({
-              authStrategy: new LocalAuth({
-                dataPath: sessionPath,
-              }),
-              puppeteer: puppeteerConfig,
-              webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-              },
-            });
-            this.setupEventHandlers();
+      // Create socket with optimized configuration
+      this.sock = makeWASocket({
+        auth: state,
+        logger: baileysLogger,
+        printQRInTerminal: false, // We'll handle QR code ourselves
+        browser: Browsers.macOS('Desktop'), // Appears as desktop WhatsApp
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 10000,
+        // Optimize for server deployment
+        emitOwnEvents: false,
+        markOnlineOnConnect: true,
+        syncFullHistory: false,
+        shouldIgnoreJid: jid => isJidBroadcast(jid) || isJidStatusBroadcast(jid),
+        shouldSyncHistoryMessage: () => false,
+        getMessage: async (key) => {
+          return {
+            conversation: 'Hello from dukAnI!'
           }
         }
-      }
-      
-      // If we get here, all retries failed
-      throw lastError;
+      });
+
+      // Set up event handlers
+      this.setupBaileysEventHandlers(saveCreds);
+
+      this.logger.log('✅ Baileys client initialized - waiting for connection...');
     } catch (error) {
-      this.logger.error('Failed to initialize WhatsApp client', error);
-      // Don't throw error to prevent app crash - just log it
+      this.logger.error('Failed to initialize Baileys client', error);
       this.isReady = false;
     }
   }
 
-  private setupEventHandlers(): void {
-    this.whatsappClient.on('qr', (qr: string) => {
-      this.logger.log('QR Code received. Please scan with your WhatsApp mobile app:');
-      qrcode.generate(qr, { small: true });
-      console.log('\nYou can also scan this QR code with your phone to connect WhatsApp Web.');
-    });
+  private setupBaileysEventHandlers(saveCreds: () => Promise<void>): void {
+    // Connection updates (QR code, connection status, etc.)
+    this.sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
 
-    this.whatsappClient.on('ready', () => {
-      this.logger.log('✅ WhatsApp Web client is ready!');
-      this.isReady = true;
-    });
-
-    this.whatsappClient.on('authenticated', () => {
-      this.logger.log('WhatsApp client authenticated successfully');
-    });
-
-    this.whatsappClient.on('auth_failure', (message) => {
-      this.logger.error('WhatsApp authentication failed:', message);
-    });
-
-    this.whatsappClient.on('disconnected', (reason) => {
-      this.logger.warn('WhatsApp client disconnected:', reason);
-      this.isReady = false;
-    });
-
-    // Only listen to 'message' event to avoid duplicate processing
-    this.whatsappClient.on('message', async (message: Message) => {
-      // Handle messages sent to the bot (not from the bot)
-      if (message.fromMe) {
-        return;
+      if (qr) {
+        this.logger.log('�� QR Code received - generating QR code...');
+        this.qrCodeData = qr;
+        
+        try {
+          // Generate QR code as text for console
+          const qrCodeText = await QRCode.toString(qr, { type: 'terminal', small: true });
+          console.log('\n📱 Scan this QR code with your WhatsApp mobile app:\n');
+          console.log(qrCodeText);
+          console.log('\n🔍 You can also access the QR code via API: GET /api/bot/qr\n');
+        } catch (error) {
+          this.logger.error('Error generating QR code:', error);
+        }
       }
+
+      if (connection === 'close') {
+        const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+        this.logger.warn(`Connection closed due to ${lastDisconnect?.error}, reconnecting: ${shouldReconnect}`);
+        
+        this.isReady = false;
+        
+        if (shouldReconnect) {
+          // Wait a bit before reconnecting
+          await delay(5000);
+          this.logger.log('🔄 Attempting to reconnect...');
+          await this.initializeBaileysClient();
+        }
+      } else if (connection === 'open') {
+        this.logger.log('🎉 WhatsApp connection opened successfully!');
+        this.isReady = true;
+        this.qrCodeData = null; // Clear QR code once connected
+      }
+    });
+
+    // Credentials update (save auth state)
+    this.sock.ev.on('creds.update', saveCreds);
+
+    // Message handling
+    this.sock.ev.on('messages.upsert', async (m) => {
+      const message = m.messages[0];
+      
+      if (!message.message) return; // Ignore empty messages
+      if (message.key.fromMe) return; // Ignore messages from ourselves
+      if (m.type !== 'notify') return; // Only process new messages
 
       await this.handleIncomingMessage(message);
     });
+
+    // Message updates (read receipts, etc.)
+    this.sock.ev.on('messages.update', (updates: WAMessageUpdate[]) => {
+      for (const { key, update } of updates) {
+        if (update.pollUpdates && key.fromMe) {
+          // Handle poll updates if needed
+        }
+      }
+    });
+
+    // Presence updates
+    this.sock.ev.on('presence.update', ({ id, presences }) => {
+      // Handle presence updates if needed
+      this.logger.debug(`Presence update for ${id}:`, Object.keys(presences));
+    });
   }
 
-  private async handleIncomingMessage(message: Message): Promise<void> {
+  private async handleIncomingMessage(message: any): Promise<void> {
     try {
-      const messageBody = message.body?.trim();
-      const chatId = message.from;
-      const contactId = this.extractContactId(chatId);
+      // Extract message content
+      const messageContent = this.extractMessageContent(message);
+      const fromJid = message.key.remoteJid;
+      const contactId = this.extractContactId(fromJid);
+      
+      if (!messageContent || !fromJid) {
+        return; // Skip invalid messages
+      }
 
-      // Skip empty messages or media messages for now
-      if (!messageBody || message.hasMedia) {
+      // Skip group messages for now
+      if (fromJid.endsWith('@g.us')) {
+        this.logger.debug(`Skipping group message from ${fromJid}`);
         return;
       }
 
-      // Skip group messages for now (optional)
-      const chat = await message.getChat();
-      if (chat.isGroup) {
-        this.logger.debug(`Skipping group message from ${chatId}`);
-        return;
-      }
+      this.logger.log(`📱 Received message from ${contactId}: ${messageContent}`);
 
-      this.logger.log(`📱 Received message from ${contactId}: ${messageBody}`);
-
-      // Show typing indicator
-      await chat.sendStateTyping();
+      // Send typing indicator
+      await this.sock.sendPresenceUpdate('composing', fromJid);
 
       // Process message with agent
-      const agentResponse = await this.agentService.runAgentPrompt(messageBody, contactId);
+      const agentResponse = await this.agentService.runAgentPrompt(messageContent, contactId);
 
-      // Send response back
-      await this.sendMessage(chatId, agentResponse.message);
+      // Send response
+      await this.sendMessage(fromJid, agentResponse.message);
+
+      // Clear typing indicator
+      await this.sock.sendPresenceUpdate('paused', fromJid);
 
       this.logger.log(`🤖 Sent response to ${contactId}: ${agentResponse.message}`);
     } catch (error) {
@@ -309,36 +194,62 @@ export class BotService implements OnModuleInit {
       
       // Send error message to user
       try {
-        await this.sendMessage(message.from, "I'm sorry, I'm having trouble right now. Please try again in a moment. 🤖");
+        const fromJid = message.key.remoteJid;
+        if (fromJid) {
+          await this.sendMessage(fromJid, "I'm sorry, I'm having trouble right now. Please try again in a moment. 🤖");
+        }
       } catch (sendError) {
         this.logger.error('Failed to send error message', sendError);
       }
     }
   }
 
-  private extractContactId(chatId: string): string {
-    // Extract phone number from chat ID (e.g., "1234567890@c.us" -> "1234567890")
-    return chatId.split('@')[0];
+  private extractMessageContent(message: any): string | null {
+    const content = message.message;
+    
+    if (content.conversation) {
+      return content.conversation;
+    }
+    
+    if (content.extendedTextMessage?.text) {
+      return content.extendedTextMessage.text;
+    }
+    
+    if (content.imageMessage?.caption) {
+      return content.imageMessage.caption;
+    }
+    
+    if (content.videoMessage?.caption) {
+      return content.videoMessage.caption;
+    }
+    
+    // Add more message types as needed
+    return null;
   }
 
-  async sendMessage(chatId: string, message: string): Promise<void> {
+  private extractContactId(jid: string): string {
+    // Extract phone number from JID (e.g., "1234567890@s.whatsapp.net" -> "1234567890")
+    return jid.split('@')[0];
+  }
+
+  async sendMessage(jid: string, message: string): Promise<void> {
     if (!this.isReady) {
-      this.logger.warn('WhatsApp client is not ready');
+      this.logger.warn('Baileys client is not ready');
       throw new Error('WhatsApp client is not ready');
     }
 
     try {
-      await this.whatsappClient.sendMessage(chatId, message);
-      this.logger.debug(`Message sent to ${chatId}`);
+      await this.sock.sendMessage(jid, { text: message });
+      this.logger.debug(`Message sent to ${jid}`);
     } catch (error) {
-      this.logger.error(`Failed to send message to ${chatId}`, error);
+      this.logger.error(`Failed to send message to ${jid}`, error);
       throw error;
     }
   }
 
   async sendMessageToContact(phoneNumber: string, message: string): Promise<void> {
-    const chatId = `${phoneNumber}@c.us`;
-    await this.sendMessage(chatId, message);
+    const jid = `${phoneNumber}@s.whatsapp.net`;
+    await this.sendMessage(jid, message);
   }
 
   async broadcastMessage(phoneNumbers: string[], message: string): Promise<void> {
@@ -361,16 +272,15 @@ export class BotService implements OnModuleInit {
   }
 
   async getClientInfo(): Promise<any> {
-    if (!this.isReady) {
+    if (!this.isReady || !this.sock?.user) {
       return null;
     }
 
     try {
-      const info = this.whatsappClient.info;
       return {
-        phoneNumber: info?.wid?.user,
-        name: info?.pushname,
-        platform: info?.platform,
+        phoneNumber: this.sock.user.id.split(':')[0],
+        name: this.sock.user.name,
+        platform: 'baileys',
         isReady: this.isReady,
       };
     } catch (error) {
@@ -379,27 +289,59 @@ export class BotService implements OnModuleInit {
     }
   }
 
+  async getQRCode(): Promise<string | null> {
+    return this.qrCodeData;
+  }
+
+  async getQRCodeImage(): Promise<string | null> {
+    if (!this.qrCodeData) {
+      return null;
+    }
+
+    try {
+      // Generate QR code as base64 data URL
+      const qrCodeDataURL = await QRCode.toDataURL(this.qrCodeData, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      return qrCodeDataURL;
+    } catch (error) {
+      this.logger.error('Error generating QR code image:', error);
+      return null;
+    }
+  }
+
   async restartClient(): Promise<void> {
     try {
-      this.logger.log('Restarting WhatsApp client...');
+      this.logger.log('🔄 Restarting Baileys client...');
       
-      if (this.whatsappClient) {
-        await this.whatsappClient.destroy();
+      if (this.sock) {
+        this.sock.end();
       }
       
       this.isReady = false;
-      await this.initializeWhatsAppClient();
+      this.qrCodeData = null;
+      
+      // Wait a moment before reinitializing
+      await delay(2000);
+      await this.initializeBaileysClient();
     } catch (error) {
       this.logger.error('Error restarting client', error);
       throw error;
     }
   }
 
-  // Admin/test method as per NestJS guidelines
-  async testConnection(): Promise<{ status: string; info?: any }> {
+  async testConnection(): Promise<{ status: string; info?: any; qrAvailable?: boolean }> {
     try {
       if (!this.isReady) {
-        return { status: 'not_ready' };
+        return { 
+          status: this.qrCodeData ? 'waiting_for_qr_scan' : 'not_ready',
+          qrAvailable: !!this.qrCodeData
+        };
       }
 
       const info = await this.getClientInfo();
@@ -409,6 +351,7 @@ export class BotService implements OnModuleInit {
           connected: true,
           phoneNumber: info?.phoneNumber,
           name: info?.name,
+          platform: 'baileys'
         }
       };
     } catch (error) {

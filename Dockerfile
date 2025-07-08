@@ -21,43 +21,22 @@ FROM node:18.20.5-alpine AS production
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for WhatsApp Web (Chromium and dependencies)
+# Install only essential system dependencies
 RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    font-noto-emoji \
-    wqy-zenhei \
-    dbus \
-    dbus-x11 \
-    xvfb \
-    fontconfig \
-    wget \
     curl \
+    wget \
     && rm -rf /var/cache/apk/*
 
 # Create a non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S whatsapp -u 1001
 
-# Tell Puppeteer to skip installing Chromium (we installed it manually)
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
-    NODE_ENV=production \
+# Set environment variables for Baileys
+ENV NODE_ENV=production \
     # Fly.io specific environment variables
     FLY_APP=true \
-    # Chrome/Chromium environment variables for better stability
-    CHROME_BIN=/usr/bin/chromium-browser \
-    DISPLAY=:99 \
     # Reduced memory limits for Fly.io constraints
-    NODE_OPTIONS="--max-old-space-size=512" \
-    # Additional Chrome stability variables
-    CHROME_NO_SANDBOX=true \
-    CHROMIUM_FLAGS="--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage"
+    NODE_OPTIONS="--max-old-space-size=512"
 
 # Copy package files
 COPY package*.json ./
@@ -78,8 +57,8 @@ USER whatsapp
 # Expose port
 EXPOSE 3000
 
-# Health check for Fly.io - more robust and lenient
-HEALTHCHECK --interval=45s --timeout=15s --start-period=120s --retries=3 \
+# Health check for Fly.io - simple and efficient
+HEALTHCHECK --interval=45s --timeout=15s --start-period=60s --retries=3 \
     CMD curl --fail --silent --max-time 10 http://localhost:3000/api/health || exit 1
 
 # Start the application

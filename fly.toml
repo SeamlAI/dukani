@@ -10,7 +10,6 @@ primary_region = 'jnb'
 
 [env]
   NODE_ENV = "production"
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
 
 [http_service]
   internal_port = 3000
