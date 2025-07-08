@@ -188,7 +188,7 @@ Respond ONLY with a JSON array like: ["profile", "search"] or ["profile"]
 
   private async generateSearchParams(userMessage: string): Promise<any> {
     const systemPrompt = `
-Extract search parameters from the user message. Return a JSON object with relevant fields.
+Extract search parameters from the user message. Return ONLY a valid JSON object with relevant fields.
 
 Possible fields:
 - query: main search term
@@ -202,15 +202,45 @@ Possible fields:
 
 Message: "${userMessage}"
 
-Return only valid JSON:
+Return only valid JSON without any explanation or additional text:
 `;
 
     try {
       const response = await this.groqService.generateSystemPromptCompletion(systemPrompt, userMessage);
-      return JSON.parse(response.trim());
+      const cleanResponse = response.trim();
+      
+      // Try to extract JSON if the response contains extra text
+      let jsonStr = cleanResponse;
+      const jsonStart = cleanResponse.indexOf('{');
+      const jsonEnd = cleanResponse.lastIndexOf('}');
+      
+      if (jsonStart !== -1 && jsonEnd !== -1 && jsonStart < jsonEnd) {
+        jsonStr = cleanResponse.substring(jsonStart, jsonEnd + 1);
+      }
+      
+      return JSON.parse(jsonStr);
     } catch (error) {
-      this.logger.warn('Error parsing search params, using basic query', error);
-      return { query: userMessage, category: 'general' };
+      this.logger.warn('Error parsing search params, using basic query', error.message);
+      
+      // Fallback: Create basic parameters based on message content
+      const fallbackParams: any = { 
+        query: userMessage, 
+        category: 'general' 
+      };
+      
+      // Simple keyword detection for better fallback
+      const lowerMessage = userMessage.toLowerCase();
+      if (lowerMessage.includes('hotel') || lowerMessage.includes('stay')) {
+        fallbackParams.category = 'hotels';
+      } else if (lowerMessage.includes('flight') || lowerMessage.includes('fly')) {
+        fallbackParams.category = 'flights';
+      } else if (lowerMessage.includes('restaurant') || lowerMessage.includes('food') || lowerMessage.includes('pizza') || lowerMessage.includes('eat')) {
+        fallbackParams.category = 'restaurants';
+      } else if (lowerMessage.includes('buy') || lowerMessage.includes('shop') || lowerMessage.includes('product')) {
+        fallbackParams.category = 'products';
+      }
+      
+      return fallbackParams;
     }
   }
 

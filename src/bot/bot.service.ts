@@ -69,17 +69,9 @@ export class BotService implements OnModuleInit {
       this.isReady = false;
     });
 
-    this.whatsappClient.on('message_create', async (message: Message) => {
-      // Only respond to messages received by the bot (not sent by the bot)
-      if (message.fromMe) {
-        return;
-      }
-
-      await this.handleIncomingMessage(message);
-    });
-
+    // Only listen to 'message' event to avoid duplicate processing
     this.whatsappClient.on('message', async (message: Message) => {
-      // Handle messages sent to the bot
+      // Handle messages sent to the bot (not from the bot)
       if (message.fromMe) {
         return;
       }
