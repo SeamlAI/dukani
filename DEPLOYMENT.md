@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-1. **Node.js Compatibility**: The application now runs on Node.js 18+ (compatible with Railway's default Node.js version)
+1. **Node.js Compatibility**: The application now runs on Node.js 20+ (required by Baileys library)
 2. **Environment Variables**: You'll need API keys for Groq and Tavily
 3. **Railway Account**: Sign up at [railway.app](https://railway.app)
 
@@ -46,7 +46,7 @@ PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 Railway will automatically deploy using the configuration files:
 - `railway.json` - Railway-specific settings
-- `nixpacks.toml` - Node.js 18 build configuration
+- `nixpacks.toml` - Node.js 20 build configuration
 - `.nvmrc` - Node.js version specification
 - `package.json` - Dependencies and scripts
 
@@ -56,7 +56,7 @@ If Nixpacks continues to have issues, you can deploy using Docker:
 
 1. In Railway dashboard, go to your project settings
 2. Under "Deploy", change from "Nixpacks" to "Dockerfile"
-3. Railway will use the included `Dockerfile` which guarantees Node.js 18.20.5
+3. Railway will use the included `Dockerfile` which guarantees Node.js 20.18.0
 
 ## WhatsApp Setup on Railway
 

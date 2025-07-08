@@ -115,7 +115,7 @@ The application follows a modular NestJS architecture with the following compone
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 20+ 
 - npm or yarn
 - WhatsApp account for QR code scanning
 
