@@ -45,8 +45,17 @@ WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--d
 
 Railway will automatically deploy using the configuration files:
 - `railway.json` - Railway-specific settings
+- `nixpacks.toml` - Node.js 18 build configuration
 - `.nvmrc` - Node.js version specification
 - `package.json` - Dependencies and scripts
+
+### Alternative: Docker Deployment
+
+If Nixpacks continues to have issues, you can deploy using Docker:
+
+1. In Railway dashboard, go to your project settings
+2. Under "Deploy", change from "Nixpacks" to "Dockerfile"
+3. Railway will use the included `Dockerfile` which guarantees Node.js 18.20.5
 
 ## WhatsApp Setup on Railway
 
@@ -71,9 +80,11 @@ dukani/
 ├── data/               # User profiles (generated)
 ├── wa-session/         # WhatsApp session (generated)
 ├── railway.json        # Railway configuration
+├── nixpacks.toml       # Nixpacks build configuration (Node.js 18)
+├── Dockerfile          # Docker configuration (backup deployment)
 ├── .nvmrc              # Node.js version specification
 ├── package.json        # Dependencies (Node.js 18 compatible)
-└── .env.example        # Environment template
+└── env.example         # Environment template
 ```
 
 ## Troubleshooting
@@ -98,6 +109,17 @@ dukani/
 - WhatsApp initialization moved to background to not block startup
 - Added dedicated `/api/health` endpoint for Railway health checks
 - Application starts even if WhatsApp fails to initialize
+
+**Error: node-fetch ES Module compatibility**
+- Solution: Downgraded node-fetch from v3.x to v2.7.0 (CommonJS compatible)
+- Added @types/node-fetch for TypeScript support
+- Fixed import statements to work with CommonJS builds
+
+**Error: Wrong Node.js version (v22 instead of v18)**
+- Solution: Created explicit nixpacks.toml with Node.js 18 specification
+- Updated .nvmrc with specific version (18.20.5)
+- Added Dockerfile as backup deployment method
+- Set package.json engines to "node": "18.x"
 
 ### Runtime Errors
 
