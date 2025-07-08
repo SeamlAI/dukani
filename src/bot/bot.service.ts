@@ -28,14 +28,55 @@ export class BotService implements OnModuleInit {
 
       const sessionPath = this.configService.get<string>('WA_SESSION_PATH', './wa-session');
       
-      // Enhanced Chrome arguments for Railway/Production deployment
-      const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+      // Enhanced Chrome arguments for different deployment platforms
+      const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+      const isFlyIo = !!(process.env.FLY_APP_NAME || process.env.FLY_ALLOC_ID);
       const isProduction = process.env.NODE_ENV === 'production';
       
       let defaultChromeArgs = '--no-sandbox,--disable-setuid-sandbox';
       
-      if (isProduction || isRailway) {
-        // Aggressive Chrome args for Railway/containerized environments
+      if (isFlyIo) {
+        // Fly.io specific Chrome arguments - more aggressive resource optimization
+        defaultChromeArgs = [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI,VizDisplayCompositor,AudioServiceOutOfProcess',
+          '--disable-ipc-flooding-protection',
+          '--disable-background-networking',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-web-security',
+          '--disable-accelerated-2d-canvas',
+          '--disable-accelerated-jpeg-decoding',
+          '--disable-accelerated-mjpeg-decode',
+          '--disable-app-list-dismiss-on-blur',
+          '--disable-accelerated-video-decode',
+          '--memory-pressure-off',
+          '--max_old_space_size=256',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-domain-reliability',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-client-side-phishing-detection',
+          '--aggressive-cache-discard',
+          '--disable-back-forward-cache'
+        ].join(',');
+        
+        this.logger.log('🪂 Using Fly.io optimized Chrome configuration');
+      } else if (isProduction || isRailway) {
+        // Railway/other production specific Chrome args
         defaultChromeArgs = [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -76,17 +117,21 @@ export class BotService implements OnModuleInit {
       const puppeteerConfig = {
         args: chromeArgs.split(',').map(arg => arg.trim()),
         headless: true,
-        timeout: isRailway ? 120000 : 60000, // Longer timeout for Railway
+        timeout: isFlyIo ? 90000 : (isRailway ? 120000 : 60000), // Adjusted timeouts per platform
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         ignoreDefaultArgs: ['--disable-extensions'], // Allow some defaults
         devtools: false,
-        pipe: isRailway ? true : false, // Use pipe instead of websocket on Railway for better stability
+        pipe: (isRailway || isFlyIo) ? true : false, // Use pipe instead of websocket for better stability
       };
 
-      // Add memory limits for Railway
-      if (isRailway) {
+      // Add memory limits for containerized environments
+      if (isRailway || isFlyIo) {
         puppeteerConfig.args.push('--memory-pressure-off');
-        puppeteerConfig.args.push('--max_old_space_size=256');
+        if (isFlyIo) {
+          puppeteerConfig.args.push('--max_old_space_size=256');
+        } else {
+          puppeteerConfig.args.push('--max_old_space_size=512');
+        }
       }
 
       this.whatsappClient = new Client({
@@ -102,8 +147,8 @@ export class BotService implements OnModuleInit {
 
       this.setupEventHandlers();
       
-      // Initialize with retry logic for Railway
-      const maxRetries = isRailway ? 3 : 1;
+      // Initialize with retry logic for containerized environments
+      const maxRetries = (isRailway || isFlyIo) ? 3 : 1;
       let lastError;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -111,7 +156,7 @@ export class BotService implements OnModuleInit {
           this.logger.log(`WhatsApp initialization attempt ${attempt}/${maxRetries}`);
           
           const initPromise = this.whatsappClient.initialize();
-          const timeoutMs = isRailway ? 180000 : 120000; // 3 minutes for Railway, 2 for others
+          const timeoutMs = isFlyIo ? 90000 : (isRailway ? 180000 : 120000); // Shorter timeout for Fly.io
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error(`WhatsApp initialization timeout (${timeoutMs/1000}s)`)), timeoutMs);
           });
@@ -125,8 +170,9 @@ export class BotService implements OnModuleInit {
           this.logger.warn(`Initialization attempt ${attempt} failed:`, error.message);
           
           if (attempt < maxRetries) {
-            this.logger.log(`Retrying in 10 seconds...`);
-            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds before retry
+            const retryDelay = isFlyIo ? 5000 : 10000; // Shorter retry delay for Fly.io
+            this.logger.log(`Retrying in ${retryDelay/1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
             
             // Destroy previous client attempt
             try {

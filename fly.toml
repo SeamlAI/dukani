@@ -1,0 +1,42 @@
+# fly.toml app configuration file generated for dukani on 2025-07-08T22:15:18+03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'dukani'
+primary_region = 'jnb'
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+  # Health check configuration for NestJS app
+  [http_service.checks]
+    [http_service.checks.health]
+      grace_period = "30s"
+      interval = "30s"
+      method = "GET"
+      path = "/api/health"
+      timeout = "10s"
+      type = "http"
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 2
+
+# Mount for WhatsApp session persistence
+[[mounts]]
+  source = "wa_session_data"
+  destination = "/app/wa-session"
+  initial_size = "1gb"
