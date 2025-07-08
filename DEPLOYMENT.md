@@ -121,6 +121,11 @@ dukani/
 - Added Dockerfile as backup deployment method
 - Set package.json engines to "node": "18.x"
 
+**Error: "nest: not found" during Docker build**
+- Solution: Multi-stage Docker build with devDependencies in build stage
+- Install all dependencies for build, then only production for runtime
+- Optimized nixpacks.toml to include devDependencies during build
+
 ### Runtime Errors
 
 **WhatsApp Connection Issues:**
