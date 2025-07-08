@@ -132,3 +132,6 @@ build/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.mule
+.cursorrules
+.cursorrules

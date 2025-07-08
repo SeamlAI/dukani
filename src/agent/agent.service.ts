@@ -90,6 +90,12 @@ export class AgentService {
   private async executeSearchTool(params: any, context: AgentContext): Promise<TavilySearchResponse> {
     const { query, category, location, origin, destination, date, budget } = params;
     
+    // Validate query before proceeding
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      this.logger.error('Invalid query provided to search tool', { query, params });
+      throw new Error('Search query is required and cannot be empty');
+    }
+    
     this.logger.debug(`Executing search tool: ${category} - ${query}`);
 
     switch (category) {
@@ -179,7 +185,16 @@ Respond ONLY with a JSON array like: ["profile", "search"] or ["profile"]
         this.logger.debug(`Tool ${toolName} executed successfully`);
       } catch (error) {
         this.logger.error(`Error executing tool ${toolName}`, error);
-        results.set(toolName, { error: error.message });
+        
+        // Provide more specific error handling based on tool type
+        if (toolName === 'search') {
+          results.set(toolName, { 
+            error: error.message,
+            fallbackMessage: "I'm having trouble searching right now. Please try rephrasing your request or try again later."
+          });
+        } else {
+          results.set(toolName, { error: error.message });
+        }
       }
     }
 
@@ -187,6 +202,15 @@ Respond ONLY with a JSON array like: ["profile", "search"] or ["profile"]
   }
 
   private async generateSearchParams(userMessage: string): Promise<any> {
+    // Validate input
+    if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
+      this.logger.warn('Invalid or empty user message for search params');
+      return {
+        query: 'general search',
+        category: 'general'
+      };
+    }
+
     const systemPrompt = `
 Extract search parameters from the user message. Return ONLY a valid JSON object with relevant fields.
 
@@ -218,18 +242,26 @@ Return only valid JSON without any explanation or additional text:
         jsonStr = cleanResponse.substring(jsonStart, jsonEnd + 1);
       }
       
-      return JSON.parse(jsonStr);
+      const parsedParams = JSON.parse(jsonStr);
+      
+      // Validate that we have a query
+      if (!parsedParams.query || typeof parsedParams.query !== 'string' || parsedParams.query.trim().length === 0) {
+        throw new Error('No valid query in parsed parameters');
+      }
+      
+      return parsedParams;
     } catch (error) {
       this.logger.warn('Error parsing search params, using basic query', error.message);
       
       // Fallback: Create basic parameters based on message content
+      const trimmedMessage = userMessage.trim();
       const fallbackParams: any = { 
-        query: userMessage, 
+        query: trimmedMessage, 
         category: 'general' 
       };
       
       // Simple keyword detection for better fallback
-      const lowerMessage = userMessage.toLowerCase();
+      const lowerMessage = trimmedMessage.toLowerCase();
       if (lowerMessage.includes('hotel') || lowerMessage.includes('stay')) {
         fallbackParams.category = 'hotels';
       } else if (lowerMessage.includes('flight') || lowerMessage.includes('fly')) {
@@ -284,6 +316,28 @@ Return only valid JSON without any explanation or additional text:
   }
 
   private async generateFinalResponse(context: AgentContext, toolResults: Map<string, any>): Promise<AgentResponse> {
+    // Check if search tool failed and provide fallback response
+    const searchResult = toolResults.get('search');
+    if (searchResult && searchResult.error) {
+      const fallbackMessage = searchResult.fallbackMessage || "I'm having trouble with my search capabilities right now.";
+      
+      this.logger.warn('Search tool failed, providing fallback response');
+      return {
+        message: `${fallbackMessage} 
+
+I can still help you with general information or recommendations based on common preferences. What specific type of assistance are you looking for? 
+
+🏨 Hotels
+🍽️ Restaurants  
+✈️ Flights
+🛍️ Products
+
+Please try asking your question in a different way, and I'll do my best to help!`,
+        toolsUsed: Array.from(toolResults.keys()),
+        confidence: 0.3,
+      };
+    }
+
     const systemPrompt = `
 You are DukAnI, a helpful AI concierge assistant for WhatsApp. You help users with travel, dining, and shopping recommendations.
 
@@ -305,6 +359,7 @@ Instructions:
 - Keep responses concise but informative
 - Use emojis appropriately
 - If booking is requested, provide clear next steps
+- If there are any errors in the tool results, acknowledge them gracefully
 
 User Message: "${context.userMessage}"
 
@@ -322,7 +377,7 @@ Provide a helpful response:
     } catch (error) {
       this.logger.error('Error generating final response', error);
       return {
-        message: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment.",
+        message: "I'm sorry, I'm having trouble processing your request right now. Please try again in a moment. 🤖",
         toolsUsed: [],
         confidence: 0.1,
       };

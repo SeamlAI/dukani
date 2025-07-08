@@ -1,0 +1,14 @@
+[variables]
+NODE_VERSION = "18.20.5"
+
+[phases.setup]
+nixPkgs = ["nodejs-18_x"]
+
+[phases.install]
+cmds = ["npm install --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[phases.start]
+cmd = "npm run start:prod" 
