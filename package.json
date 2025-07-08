@@ -23,7 +23,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "debug:whatsapp": "node debug-whatsapp.js",
-    "debug:clean": "rm -rf wa-session && rm -f whatsapp-debug*.json"
+    "debug:clean": "rm -rf wa-session && rm -f whatsapp-debug*.json",
+    "test:whatsapp:macos": "node test-whatsapp-macos.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

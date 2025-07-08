@@ -44,11 +44,17 @@ export class TavilyService {
 
   async search(request: TavilySearchRequest): Promise<TavilySearchResponse> {
     try {
+      // Validate query
+      if (!request.query || typeof request.query !== 'string' || request.query.trim().length === 0) {
+        this.logger.error('Invalid or empty query provided to Tavily search', { query: request.query });
+        throw new Error('Search query is required and cannot be empty');
+      }
+
       this.logger.debug(`Searching for: ${request.query}`);
       
       const payload = {
         api_key: this.apiKey,
-        query: request.query,
+        query: request.query.trim(),
         search_depth: request.searchDepth || 'basic',
         include_images: request.includeImages || false,
         include_answer: request.includeAnswer || true,
@@ -85,7 +91,11 @@ export class TavilyService {
   }
 
   async searchHotels(location: string, checkIn?: string, checkOut?: string): Promise<TavilySearchResponse> {
-    const query = `hotels in ${location}${checkIn ? ` check-in ${checkIn}` : ''}${checkOut ? ` check-out ${checkOut}` : ''}`;
+    if (!location || typeof location !== 'string' || location.trim().length === 0) {
+      throw new Error('Location is required for hotel search');
+    }
+    
+    const query = `hotels in ${location.trim()}${checkIn ? ` check-in ${checkIn}` : ''}${checkOut ? ` check-out ${checkOut}` : ''}`;
     return this.search({
       query,
       searchDepth: 'advanced',
@@ -95,7 +105,14 @@ export class TavilyService {
   }
 
   async searchFlights(origin: string, destination: string, departureDate?: string): Promise<TavilySearchResponse> {
-    const query = `flights from ${origin} to ${destination}${departureDate ? ` on ${departureDate}` : ''}`;
+    if (!origin || typeof origin !== 'string' || origin.trim().length === 0) {
+      throw new Error('Origin is required for flight search');
+    }
+    if (!destination || typeof destination !== 'string' || destination.trim().length === 0) {
+      throw new Error('Destination is required for flight search');
+    }
+    
+    const query = `flights from ${origin.trim()} to ${destination.trim()}${departureDate ? ` on ${departureDate}` : ''}`;
     return this.search({
       query,
       searchDepth: 'advanced',
@@ -105,7 +122,11 @@ export class TavilyService {
   }
 
   async searchRestaurants(location: string, cuisine?: string): Promise<TavilySearchResponse> {
-    const query = `${cuisine || ''} restaurants in ${location}`.trim();
+    if (!location || typeof location !== 'string' || location.trim().length === 0) {
+      throw new Error('Location is required for restaurant search');
+    }
+    
+    const query = `${cuisine && cuisine.trim() ? cuisine.trim() + ' ' : ''}restaurants in ${location.trim()}`;
     return this.search({
       query,
       searchDepth: 'basic',
@@ -115,7 +136,11 @@ export class TavilyService {
   }
 
   async searchProducts(productName: string, budget?: string): Promise<TavilySearchResponse> {
-    const query = `${productName}${budget ? ` under ${budget}` : ''}`;
+    if (!productName || typeof productName !== 'string' || productName.trim().length === 0) {
+      throw new Error('Product name is required for product search');
+    }
+    
+    const query = `${productName.trim()}${budget && budget.trim() ? ` under ${budget.trim()}` : ''}`;
     return this.search({
       query,
       searchDepth: 'basic',
