@@ -5,10 +5,10 @@ NODE_VERSION = "18.20.5"
 nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["npm install --include=dev"]
 
 [phases.build]
 cmds = ["npm run build"]
 
-[start]
+[phases.start]
 cmd = "npm run start:prod" 
