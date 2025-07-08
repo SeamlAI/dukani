@@ -45,7 +45,7 @@ WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--d
 
 Railway will automatically deploy using the configuration files:
 - `railway.json` - Railway-specific settings
-- `nixpacks.toml` - Build configuration
+- `.nvmrc` - Node.js version specification
 - `package.json` - Dependencies and scripts
 
 ## WhatsApp Setup on Railway
@@ -71,7 +71,7 @@ dukani/
 ├── data/               # User profiles (generated)
 ├── wa-session/         # WhatsApp session (generated)
 ├── railway.json        # Railway configuration
-├── nixpacks.toml       # Build configuration
+├── .nvmrc              # Node.js version specification
 ├── package.json        # Dependencies (Node.js 18 compatible)
 └── .env.example        # Environment template
 ```
@@ -87,6 +87,11 @@ dukani/
 **Error: Package lock file sync issues**
 - Solution: package-lock.json has been regenerated with compatible versions
 - Use `npm ci` instead of `npm install` in production
+
+**Error: Nixpacks undefined variable 'npm'**
+- Solution: Removed custom nixpacks.toml - Railway auto-detects Node.js projects
+- Uses `.nvmrc` file to specify Node.js 18
+- Let Railway handle the build process automatically
 
 ### Runtime Errors
 
