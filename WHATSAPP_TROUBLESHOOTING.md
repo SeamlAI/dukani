@@ -233,7 +233,7 @@ export CHROME_PATH="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
 ### Railway/Cloud Deployment
 ```env
 # Enhanced Chrome args for cloud environments
-WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--disable-default-apps,--disable-extensions,--single-process
+WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--disable-extensions,--disable-plugins,--disable-default-apps,--single-process,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding
 
 # Memory optimization
 NODE_OPTIONS=--max-old-space-size=512

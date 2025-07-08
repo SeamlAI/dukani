@@ -27,16 +27,29 @@ export class BotService implements OnModuleInit {
       this.logger.log('Initializing WhatsApp Web client...');
 
       const sessionPath = this.configService.get<string>('WA_SESSION_PATH', './wa-session');
-      const chromeArgs = this.configService.get<string>('WA_CHROME_ARGS', '--no-sandbox,--disable-setuid-sandbox');
+      
+      // Enhanced Chrome arguments for Railway/Production deployment
+      const defaultChromeArgs = process.env.NODE_ENV === 'production' 
+        ? '--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--disable-extensions,--disable-plugins,--disable-default-apps,--single-process,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding'
+        : '--no-sandbox,--disable-setuid-sandbox';
+      
+      const chromeArgs = this.configService.get<string>('WA_CHROME_ARGS', defaultChromeArgs);
+      
+      this.logger.log(`Using Chrome args: ${chromeArgs}`);
 
       this.whatsappClient = new Client({
         authStrategy: new LocalAuth({
           dataPath: sessionPath,
         }),
         puppeteer: {
-          args: chromeArgs.split(','),
+          args: chromeArgs.split(',').map(arg => arg.trim()),
           headless: true,
           timeout: 60000, // 60 second timeout
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        },
+        webVersionCache: {
+          type: 'remote',
+          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
         },
       });
 

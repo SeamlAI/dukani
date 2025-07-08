@@ -6,6 +6,11 @@ import 'dotenv/config';
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   
+  // Set NODE_ENV to production if not set and we're likely in production
+  if (!process.env.NODE_ENV && (process.env.RAILWAY_ENVIRONMENT || process.env.PORT)) {
+    process.env.NODE_ENV = 'production';
+  }
+  
   logger.log('🚀 Starting dukAnI application...');
   logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.log(`Port: ${process.env.PORT || 3000}`);

@@ -21,7 +21,8 @@ PORT=3000
 
 # WhatsApp Configuration (Railway-optimized)
 WA_SESSION_PATH=./wa-session
-WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run
+WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--disable-extensions,--disable-plugins,--disable-default-apps,--single-process,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ```
 
 ## Deployment Steps

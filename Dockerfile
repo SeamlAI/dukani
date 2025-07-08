@@ -33,7 +33,8 @@ RUN apk add --no-cache \
 
 # Tell Puppeteer to skip installing Chromium (we installed it manually)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    NODE_ENV=production
 
 # Copy package files
 COPY package*.json ./
