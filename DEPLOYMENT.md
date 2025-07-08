@@ -19,9 +19,9 @@ TAVILY_API_KEY=your_tavily_api_key_here
 NODE_ENV=production
 PORT=3000
 
-# WhatsApp Configuration (Railway-optimized)
+# WhatsApp Configuration (Railway-optimized for stability)
 WA_SESSION_PATH=./wa-session
-WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--disable-extensions,--disable-plugins,--disable-default-apps,--single-process,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding
+WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--disable-software-rasterizer,--no-first-run,--no-zygote,--single-process,--disable-extensions,--disable-plugins,--disable-default-apps,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding,--disable-features=TranslateUI,--disable-features=VizDisplayCompositor,--disable-ipc-flooding-protection,--memory-pressure-off,--max_old_space_size=256,--disable-web-security,--disable-sync,--disable-translate,--hide-scrollbars,--mute-audio,--disable-background-networking,--disable-background-sync,--disable-client-side-phishing-detection,--disable-sync-preferences,--disable-sync-app-settings
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ```
 

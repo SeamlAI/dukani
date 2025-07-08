@@ -29,24 +29,71 @@ export class BotService implements OnModuleInit {
       const sessionPath = this.configService.get<string>('WA_SESSION_PATH', './wa-session');
       
       // Enhanced Chrome arguments for Railway/Production deployment
-      const defaultChromeArgs = process.env.NODE_ENV === 'production' 
-        ? '--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--disable-extensions,--disable-plugins,--disable-default-apps,--single-process,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding'
-        : '--no-sandbox,--disable-setuid-sandbox';
+      const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+      const isProduction = process.env.NODE_ENV === 'production';
+      
+      let defaultChromeArgs = '--no-sandbox,--disable-setuid-sandbox';
+      
+      if (isProduction || isRailway) {
+        // Aggressive Chrome args for Railway/containerized environments
+        defaultChromeArgs = [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-ipc-flooding-protection',
+          '--memory-pressure-off',
+          '--max_old_space_size=256',
+          '--disable-web-security',
+          '--disable-sync',
+          '--disable-translate',
+          '--hide-scrollbars',
+          '--mute-audio',
+          '--disable-background-networking',
+          '--disable-background-sync',
+          '--disable-client-side-phishing-detection',
+          '--disable-sync-preferences',
+          '--disable-sync-app-settings'
+        ].join(',');
+      }
       
       const chromeArgs = this.configService.get<string>('WA_CHROME_ARGS', defaultChromeArgs);
       
       this.logger.log(`Using Chrome args: ${chromeArgs}`);
 
+      const puppeteerConfig = {
+        args: chromeArgs.split(',').map(arg => arg.trim()),
+        headless: true,
+        timeout: isRailway ? 120000 : 60000, // Longer timeout for Railway
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        ignoreDefaultArgs: ['--disable-extensions'], // Allow some defaults
+        devtools: false,
+        pipe: isRailway ? true : false, // Use pipe instead of websocket on Railway for better stability
+      };
+
+      // Add memory limits for Railway
+      if (isRailway) {
+        puppeteerConfig.args.push('--memory-pressure-off');
+        puppeteerConfig.args.push('--max_old_space_size=256');
+      }
+
       this.whatsappClient = new Client({
         authStrategy: new LocalAuth({
           dataPath: sessionPath,
         }),
-        puppeteer: {
-          args: chromeArgs.split(',').map(arg => arg.trim()),
-          headless: true,
-          timeout: 60000, // 60 second timeout
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        },
+        puppeteer: puppeteerConfig,
         webVersionCache: {
           type: 'remote',
           remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
@@ -55,14 +102,59 @@ export class BotService implements OnModuleInit {
 
       this.setupEventHandlers();
       
-      // Add timeout for initialization
-      const initPromise = this.whatsappClient.initialize();
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('WhatsApp initialization timeout')), 120000); // 2 minute timeout
-      });
+      // Initialize with retry logic for Railway
+      const maxRetries = isRailway ? 3 : 1;
+      let lastError;
       
-      await Promise.race([initPromise, timeoutPromise]);
-      this.logger.log('WhatsApp client initialization completed');
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          this.logger.log(`WhatsApp initialization attempt ${attempt}/${maxRetries}`);
+          
+          const initPromise = this.whatsappClient.initialize();
+          const timeoutMs = isRailway ? 180000 : 120000; // 3 minutes for Railway, 2 for others
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(`WhatsApp initialization timeout (${timeoutMs/1000}s)`)), timeoutMs);
+          });
+          
+          await Promise.race([initPromise, timeoutPromise]);
+          this.logger.log('✅ WhatsApp client initialization completed successfully');
+          return; // Success, exit retry loop
+          
+        } catch (error) {
+          lastError = error;
+          this.logger.warn(`Initialization attempt ${attempt} failed:`, error.message);
+          
+          if (attempt < maxRetries) {
+            this.logger.log(`Retrying in 10 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds before retry
+            
+            // Destroy previous client attempt
+            try {
+              if (this.whatsappClient) {
+                await this.whatsappClient.destroy();
+              }
+            } catch (destroyError) {
+              this.logger.warn('Error destroying client during retry:', destroyError.message);
+            }
+            
+            // Recreate client for retry
+            this.whatsappClient = new Client({
+              authStrategy: new LocalAuth({
+                dataPath: sessionPath,
+              }),
+              puppeteer: puppeteerConfig,
+              webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+              },
+            });
+            this.setupEventHandlers();
+          }
+        }
+      }
+      
+      // If we get here, all retries failed
+      throw lastError;
     } catch (error) {
       this.logger.error('Failed to initialize WhatsApp client', error);
       // Don't throw error to prevent app crash - just log it

@@ -65,7 +65,32 @@ npm run debug:clean
 rm -rf wa-session
 ```
 
-### Issue 2: "Chrome/Puppeteer test failed"
+### Issue 2: "ProtocolError: Protocol error (Target.setAutoAttach): Target closed"
+
+**Symptoms:**
+- Chrome process starts but crashes immediately  
+- Error occurs during WhatsApp client initialization
+- Common on Railway, Heroku, and other cloud platforms
+
+**Root Cause:**
+Chrome is being killed by the container orchestrator due to memory/resource constraints.
+
+**Solutions:**
+
+#### A. Use Railway-optimized Chrome arguments
+```env
+WA_CHROME_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--disable-software-rasterizer,--no-first-run,--no-zygote,--single-process,--disable-extensions,--disable-plugins,--disable-default-apps,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding,--disable-features=TranslateUI,--disable-features=VizDisplayCompositor,--disable-ipc-flooding-protection,--memory-pressure-off,--max_old_space_size=256,--disable-web-security,--disable-sync,--disable-translate,--hide-scrollbars,--mute-audio,--disable-background-networking,--disable-background-sync,--disable-client-side-phishing-detection,--disable-sync-preferences,--disable-sync-app-settings
+```
+
+#### B. Monitor Railway resource usage
+- Check Railway dashboard for memory spikes
+- Consider upgrading from free tier if hitting limits
+- Monitor CPU usage during Chrome startup
+
+#### C. Add retry logic (already implemented)
+The bot now automatically retries WhatsApp initialization up to 3 times on Railway.
+
+### Issue 3: "Chrome/Puppeteer test failed"
 
 **Solutions:**
 
