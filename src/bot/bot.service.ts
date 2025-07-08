@@ -16,7 +16,10 @@ export class BotService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.initializeWhatsAppClient();
+    // Initialize WhatsApp client asynchronously to not block application startup
+    this.initializeWhatsAppClient().catch(error => {
+      this.logger.error('WhatsApp client initialization failed, but app will continue running', error);
+    });
   }
 
   private async initializeWhatsAppClient(): Promise<void> {
@@ -33,14 +36,24 @@ export class BotService implements OnModuleInit {
         puppeteer: {
           args: chromeArgs.split(','),
           headless: true,
+          timeout: 60000, // 60 second timeout
         },
       });
 
       this.setupEventHandlers();
-      await this.whatsappClient.initialize();
+      
+      // Add timeout for initialization
+      const initPromise = this.whatsappClient.initialize();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('WhatsApp initialization timeout')), 120000); // 2 minute timeout
+      });
+      
+      await Promise.race([initPromise, timeoutPromise]);
+      this.logger.log('WhatsApp client initialization completed');
     } catch (error) {
       this.logger.error('Failed to initialize WhatsApp client', error);
-      throw error;
+      // Don't throw error to prevent app crash - just log it
+      this.isReady = false;
     }
   }
 

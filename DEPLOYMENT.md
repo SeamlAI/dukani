@@ -93,6 +93,12 @@ dukani/
 - Uses `.nvmrc` file to specify Node.js 18
 - Let Railway handle the build process automatically
 
+**Error: Health check failures**
+- Solution: Fixed app to bind to `0.0.0.0` instead of `localhost` in production
+- WhatsApp initialization moved to background to not block startup
+- Added dedicated `/api/health` endpoint for Railway health checks
+- Application starts even if WhatsApp fails to initialize
+
 ### Runtime Errors
 
 **WhatsApp Connection Issues:**
