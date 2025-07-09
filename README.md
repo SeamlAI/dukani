@@ -299,3 +299,6 @@ This project is licensed under the UNLICENSED license.
 ## 📞 Support
 
 For support, please check the bot status endpoint or review the application logs for debugging information.
+
+
+Kindly use the baileys branch.
