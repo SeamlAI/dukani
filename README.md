@@ -301,4 +301,4 @@ This project is licensed under the UNLICENSED license.
 For support, please check the bot status endpoint or review the application logs for debugging information.
 
 
-Kindly use the baileys branch.
+Kindly to test the AI bot, send a message to +254111225035 on WhatsApp.
