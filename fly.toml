@@ -1,4 +1,5 @@
-# fly.toml app configuration file generated for dukani on 2025-07-08T19:29:28Z
+
+# fly.toml app configuration file generated for dukani on 2025-07-08T22:15:18+03:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -8,6 +9,10 @@ primary_region = 'jnb'
 
 [build]
 
+
+[env]
+  NODE_ENV = "production"
+
 [http_service]
   internal_port = 3000
   force_https = true
@@ -16,8 +21,32 @@ primary_region = 'jnb'
   min_machines_running = 0
   processes = ['app']
 
+
+# Temporarily disabled health checks for initial deployment
+# Will re-enable once WhatsApp is working
+# [[http_service.checks]]
+#   grace_period = "120s"
+#   interval = "45s"
+#   method = "GET"
+#   path = "/api/health"
+#   timeout = "15s"
+#   type = "http"
+#   headers = {}
+
+[[vm]]
+  memory = '2gb'
+  cpu_kind = 'shared'
+  cpus = 2
+
+# Mount for WhatsApp session persistence
+[[mounts]]
+  source = "wa_session_data"
+  destination = "/app/wa-session"
+  initial_size = "1gb"
+=======
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
   memory_mb = 1024
+

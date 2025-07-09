@@ -177,7 +177,7 @@ The application follows a modular NestJS architecture with clear separation of c
 |-----------|------------|---------|---------|
 | **Backend Framework** | NestJS | ^11.0.1 | Application framework |
 | **Language** | TypeScript | ^5.7.3 | Type-safe development |
-| **Runtime** | Node.js | 18+ | JavaScript runtime |
+| **Runtime** | Node.js | 20+ | JavaScript runtime |
 | **WhatsApp Integration** | whatsapp-web.js | ^1.23.0 | WhatsApp Web API |
 | **AI/LLM** | Groq SDK | ^0.3.1 | LLaMA 3 integration |
 | **Search API** | Tavily API | Custom | Real-time web search |

@@ -7,13 +7,21 @@ async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   
   // Set NODE_ENV to production if not set and we're likely in production
-  if (!process.env.NODE_ENV && (process.env.RAILWAY_ENVIRONMENT || process.env.PORT)) {
+  if (!process.env.NODE_ENV && (process.env.RAILWAY_ENVIRONMENT || process.env.PORT || process.env.FLY_APP_NAME)) {
     process.env.NODE_ENV = 'production';
   }
   
   logger.log('🚀 Starting dukAnI application...');
   logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.log(`Port: ${process.env.PORT || 3000}`);
+  
+  // Detect deployment platform
+  const isRailway = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+  const isFlyIo = !!(process.env.FLY_APP_NAME || process.env.FLY_ALLOC_ID);
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isRailway) logger.log('🚂 Detected Railway deployment');
+  if (isFlyIo) logger.log('🪂 Detected Fly.io deployment');
   
   try {
     const app = await NestFactory.create(AppModule, {
@@ -27,7 +35,11 @@ async function bootstrap(): Promise<void> {
     app.setGlobalPrefix('api');
 
     const port = process.env.PORT || 3000;
-    const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+    
+    // Always bind to 0.0.0.0 in production or containerized environments
+    const host = (isProduction || isRailway || isFlyIo) ? '0.0.0.0' : 'localhost';
+    
+    logger.log(`🌐 Binding to host: ${host}:${port}`);
     
     await app.listen(port, host);
 
